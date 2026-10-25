@@ -88,3 +88,20 @@ def rebuild_pdf(job_id: int, cfg: dict) -> None:
     job = db.get(conn, job_id)
     pdf_path = build_proposal_pdf(job, job["analysis"], job["application"], cfg)
     db.update(conn, job_id, pdf_path=str(pdf_path))
+
+
+def outreach(job_id: int, cfg: dict) -> dict:
+    """Etsii päättäjät verkosta ja kirjoittaa heille sähköposti- ja LinkedIn-viestit."""
+    conn = db.connect()
+    job = db.get(conn, job_id)
+    if not job["analysis"]:
+        job["analysis"] = llm.analyze(job)
+        db.update(conn, job_id, analysis=job["analysis"], score=job["analysis"]["pisteet"])
+    people = llm.find_decision_makers(job)
+    messages = {m["nimi"]: m for m in llm.write_outreach(job, job["analysis"], people, cfg)} if people else {}
+    for person in people:
+        person["viesti"] = messages.get(person["nimi"])
+        person["lahetetty"] = []
+    data = {"haettu": db.now(), "henkilot": people}
+    db.update(conn, job_id, outreach=data)
+    return data

@@ -37,6 +37,7 @@ Näkymässä:
 - **Avaa ja esitäytä hakemus** avaa hakulomakkeen selaimeen ja täyttää sen automaattisesti heti, kun kentät näkyvät. Jos sivu vaatii kirjautumisen tai evästeiden hyväksynnän, tee se itse; agentti odottaa lomaketta enintään 5 minuuttia. Eteneminen ja tarkistettavat asiat näkyvät ilmoitussivulla.
 - **Monta kerralla:** rastita etusivun listasta ilmoitukset ja paina **Esitäytä valitut**. Jokainen avautuu samaan selaimeen omalle välilehdelleen ja täytetään rinnakkain. Ilmoituksille, joilla ei vielä ole hakemusta, Claude kirjoittaa saatteen ja PDF:n ensin. Jos selain on jo auki, valitut lisätään siihen uusina välilehtinä.
 - Tarkista lomake, hyväksy ehdot ja paina Lähetä itse. Paina sen jälkeen paneelissa **Lähetin hakemuksen**. Muut napit: **Täytä uudelleen**, **Sulje välilehti** ja **Sulje selain**.
+- **Yhteydenotto johtoon:** Lähetetty-välilehdellä on **Ota yhteys johtoon**. Ilmoitussivun **Etsi johto** etsii verkosta (Claude + verkkohaku, noin 1–2 min) toimitusjohtajan, roolin johtajan ja ilmoituksen yhteyshenkilön sekä kirjoittaa kullekin sähköpostin ja LinkedIn-viestin (enintään 300 merkkiä). Sähköpostiosoitteita ei arvata: osoite näytetään vain, jos se löytyy sellaisenaan lähdesivulta (ohjelma tarkistaa sen). **Gmail-luonnos** avaa valmiin viestin Gmailiin, jossa se tallentuu Luonnoksiin. **LinkedIn** avaa profiilin ja kopioi viestin leikepöydälle. Lähetät itse ja merkitset lähetetyksi.
 
 Komentoriviltä onnistuu myös (`python -m velho_agent web` käynnistää näkymän komentoikkunassa).
 

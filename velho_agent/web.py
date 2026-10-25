@@ -136,37 +136,109 @@ poll("{{ url_for('search_status') }}", s => {
 </div>
 <form method="post" action="{{ url_for('prefill_many') }}" id="multi">
 <div class="row" style="margin-bottom:10px">
-  <button class="btn" id="multi-btn" disabled>Esitäytä valitut</button>
+  {% if status == "lahetetty" %}
+  <button type="button" class="btn multi-act" data-label="Ota yhteyttä sähköpostilla" onclick="contact('Sähköposti')" disabled>Ota yhteyttä sähköpostilla</button>
+  <button type="button" class="btn multi-act" data-label="Ota yhteyttä LinkedInissä" onclick="contact('LinkedIn')" disabled>Ota yhteyttä LinkedInissä</button>
+  <span class="muted">Jokaiselle yritykselle aukeaa oma ikkuna parhaalle päättäjälle. Salli ponnahdusikkunat tälle sivulle, jos vain yksi aukeaa.</span>
+  {% else %}
+  <button class="btn multi-act" data-label="Esitäytä valitut" disabled>Esitäytä valitut</button>
   <span class="muted">Valitut avautuvat samaan selaimeen omille välilehdilleen. Puuttuvat hakemukset kirjoitetaan ensin.</span>
+  {% endif %}
+</div>
+<div class="card live" id="contacts" hidden>
+  <div class="row"><h2 style="margin:0">Avatut yhteydenotot</h2>
+    <span class="muted">Lähetä viestit avautuneissa ikkunoissa ja merkitse ne tähän.</span></div>
+  <div id="contact-rows"></div>
 </div>
 <table>
-<tr><th><input type="checkbox" id="all" title="Valitse kaikki"></th><th>Pisteet</th><th>Ilmoitus</th><th>Lähde</th><th>Haku päättyy</th><th>Tila</th></tr>
+<tr><th><input type="checkbox" id="all" title="Valitse kaikki"></th><th>Pisteet</th><th>Ilmoitus</th><th>Lähde</th><th>Haku päättyy</th><th>Tila</th>{% if status == "lahetetty" %}<th>Johto</th>{% endif %}</tr>
 {% for j in jobs %}
 <tr>
-  <td><input type="checkbox" name="job" value="{{ j.id }}"></td>
+  <td><input type="checkbox" name="job" value="{{ j.id }}" data-company="{{ j.company }}" data-outreach="{{ j.outreach|tojson|forceescape }}"></td>
   <td class="score">{{ j.score if j.score is not none else '–' }}</td>
   <td><a href="{{ url_for('job', job_id=j.id) }}">{{ j.title }}</a><div class="muted">{{ j.company }} · {{ j.location or '' }}</div></td>
   <td><a href="{{ j.url }}" target="_blank">{{ j.url|source }}</a></td>
   <td class="muted">{{ j.valid_through or '' }}</td>
   <td class="muted">{{ statuses[j.status] }}</td>
+  {% if status == "lahetetty" %}<td>
+    {% if j.outreach %}{% set sent = j.outreach.henkilot|map(attribute='lahetetty')|sum(start=[]) %}
+    <a href="{{ url_for('job', job_id=j.id) }}#johto">{{ j.outreach.henkilot|length }} päättäjää</a>
+    <div class="muted">{{ sent|length }} viestiä lähetetty</div>
+    {% else %}<a class="btn ghost" href="{{ url_for('job', job_id=j.id) }}#johto">Ota yhteys johtoon</a>{% endif %}
+  </td>{% endif %}
 </tr>
 {% else %}<tr><td colspan="6" class="muted">Ei ilmoituksia. Aja haku yläkulmasta.</td></tr>{% endfor %}
 </table>
 </form>
 <script>
 const boxes = [...document.querySelectorAll('#multi input[name=job]')];
-const multiBtn = document.getElementById('multi-btn');
 const refresh = () => {
   const n = boxes.filter(b => b.checked).length;
-  multiBtn.disabled = !n;
-  multiBtn.textContent = n ? 'Esitäytä valitut (' + n + ')' : 'Esitäytä valitut';
+  document.querySelectorAll('.multi-act').forEach(b => {
+    b.disabled = !n;
+    b.textContent = b.dataset.label + (n ? ' (' + n + ')' : '');
+  });
 };
+
+// Yhteydenotto valituille: ikkunat avataan suoraan klikkauksesta (muuten selain estää ne)
+const gmailUrl = (p) => 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(p.sahkoposti)
+  + '&su=' + encodeURIComponent(p.viesti.sposti_otsikko) + '&body=' + encodeURIComponent(p.viesti.sposti_teksti);
+const liUrl = (p, company) => p.linkedin_url
+  || 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(p.nimi + ' ' + company);
+function contact(kanava) {
+  const rows = [], missing = [], skipped = [];
+  for (const b of boxes.filter(b => b.checked)) {
+    const o = JSON.parse(b.dataset.outreach);
+    if (!o) { missing.push(b); continue; }
+    // Henkilöt ovat paremmuusjärjestyksessä: valitaan paras, jolle tämä kanava on käytettävissä
+    const usable = (p) => p.viesti && (kanava === 'Sähköposti' ? p.sahkoposti : p.linkedin_url);
+    let i = o.henkilot.findIndex(usable);
+    if (i < 0 && kanava === 'LinkedIn') i = o.henkilot.findIndex(p => p.viesti);  // profiilia ei löytynyt: LinkedIn-haku
+    if (i < 0) { skipped.push(b.dataset.company); continue; }
+    rows.push({job: b.value, company: b.dataset.company, i, p: o.henkilot[i]});
+  }
+  rows.forEach(r => window.open(kanava === 'Sähköposti' ? gmailUrl(r.p) : liUrl(r.p, r.company), '_blank'));
+  if (kanava === 'LinkedIn' && rows.length) navigator.clipboard.writeText(rows[0].p.viesti.linkedin_viesti).catch(() => {});
+  missing.forEach(b => fetch('/job/' + b.value + '/johto', {method: 'POST'}));
+
+  const panel = document.getElementById('contacts');
+  panel.hidden = false;
+  document.getElementById('contact-rows').innerHTML =
+    rows.map((r, n) => '<div class="task row" data-n="' + n + '"><b>' + esc(r.company) + '</b> ' + esc(r.p.nimi)
+      + ' <span class="muted">' + esc(r.p.rooli) + (kanava === 'Sähköposti' ? ' · ' + esc(r.p.sahkoposti) : '') + '</span>'
+      + '<span style="margin-left:auto" class="row">'
+      + (kanava === 'LinkedIn' ? '<button type="button" class="btn ghost copy">' + (n === 0 ? 'Kopioitu ✓' : 'Kopioi viesti') + '</button>' : '')
+      + '<button type="button" class="btn good mark">Merkitse lähetetyksi</button></span></div>').join('')
+    + (skipped.length ? '<p class="muted">' + (kanava === 'Sähköposti' ? 'Ei julkista sähköpostia (käytä LinkedIniä): ' : 'Ei päättäjiä: ')
+       + esc(skipped.join(', ')) + '</p>' : '')
+    + (missing.length ? '<p class="muted"><span class="spin"></span>Johtoa haetaan: ' + esc(missing.map(b => b.dataset.company).join(', '))
+       + ' – paina nappia uudelleen, kun haku on valmis (noin 1–2 min, sivu päivittyy).</p>' : '')
+    + (!rows.length && !missing.length ? '<p class="muted">Ei avattavia yhteydenottoja.</p>' : '');
+  document.querySelectorAll('#contact-rows .task').forEach(el => {
+    const r = rows[el.dataset.n];
+    const copy = el.querySelector('.copy');
+    if (copy) copy.onclick = async () => { await navigator.clipboard.writeText(r.p.viesti.linkedin_viesti); copy.textContent = 'Kopioitu ✓'; };
+    el.querySelector('.mark').onclick = async (e) => {
+      await fetch('/job/' + r.job + '/johto/' + r.i + '/lahetetty', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({kanava, otsikko: kanava === 'LinkedIn' ? '' : r.p.viesti.sposti_otsikko,
+                              teksti: kanava === 'LinkedIn' ? r.p.viesti.linkedin_viesti : r.p.viesti.sposti_teksti})});
+      e.target.textContent = 'Lähetetty ✓'; e.target.disabled = true;
+    };
+  });
+  if (missing.length) {
+    const wait = setInterval(async () => {
+      const states = await Promise.all(missing.map(b => fetch('/job/' + b.value + '/johto/tila').then(r => r.json())));
+      if (states.every(s => s.state !== 'kaynnissa')) { clearInterval(wait); location.reload(); }
+    }, 5000);
+  }
+}
 boxes.forEach(b => b.onchange = refresh);
 document.getElementById('all').onchange = e => { boxes.forEach(b => b.checked = e.target.checked); refresh(); };
 </script>"""
 
 JOB = """
 <p><a href="{{ url_for('index') }}">← Takaisin</a></p>
+{% if outreach_error %}<div class="flash">{{ outreach_error }}</div>{% endif %}
 <div class="card">
   <h1>{{ j.title }}</h1>
   <div class="muted">{{ j.company }} · {{ j.location or '' }} · julkaistu {{ j.posted or '?' }} · päättyy {{ j.valid_through or '?' }} · <a href="{{ j.url }}" target="_blank">Duunitori ↗</a></div>
@@ -206,6 +278,73 @@ JOB = """
   <p class="muted">Claude kirjoittaa saatteen ja yksisivuisen esittelyn (PDF-liite). Kestää noin minuutin.</p>
   {% endif %}
 </div>
+
+
+{% if show_outreach %}
+<div class="card" id="johto">
+  <h2>Yhteydenotto johtoon</h2>
+  {% if outreach_running %}
+  <p><span class="spin"></span>Claude etsii päättäjiä verkosta ja kirjoittaa viestejä… (noin 1–2 min)</p>
+  <script>poll("{{ url_for('outreach_status', job_id=j.id) }}", s => {}, ['valmis', 'virhe']);</script>
+  {% elif o %}
+  <p class="muted">Haettu {{ o.haettu[:16].replace('T', ' ') }}. Sähköposti näytetään vain, jos se löytyi julkisesta lähteestä.</p>
+  {% for p in o.henkilot %}
+  <div class="task" data-i="{{ loop.index0 }}">
+    <div class="row"><b>{{ p.nimi }}</b><span class="muted">{{ p.rooli }}</span>{% if loop.first %}<span class="pill korkea">Paras</span>{% endif %}
+      {% for l in p.lahetetty %}<span class="pill korkea">{{ l.kanava }} {{ l.aika[8:10] }}.{{ l.aika[5:7] }}.</span>{% endfor %}</div>
+    <div class="muted">{{ p.peruste }}</div>
+    <div class="muted">Lähde: {% for u in p.lahde.split(';') if u.strip() %}<a href="{{ u.strip() }}" target="_blank">{{ u.strip()|source }}</a> {% endfor %}
+      {% if p.sahkoposti %}· {{ p.sahkoposti }}{% endif %}</div>
+    {% if p.viesti %}
+    <details style="margin-top:8px"><summary>Viestit (muokattavissa)</summary>
+      <label class="muted">Sähköpostin otsikko</label>
+      <input class="subj" value="{{ p.viesti.sposti_otsikko }}" style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px">
+      <label class="muted">Sähköposti</label><textarea class="body" style="min-height:200px">{{ p.viesti.sposti_teksti }}</textarea>
+      <label class="muted">LinkedIn (<span class="licount"></span>/300 merkkiä)</label><textarea class="li" style="min-height:90px">{{ p.viesti.linkedin_viesti }}</textarea>
+    </details>
+    {% endif %}
+    <div class="row" style="margin-top:8px">
+      <button class="btn" onclick="gmail(this)" data-to="{{ p.sahkoposti }}"
+        {% if not p.sahkoposti %}disabled title="Ei julkista sähköpostiosoitetta"{% endif %}>Gmail-luonnos</button>
+      <button class="btn" onclick="linkedin(this)"
+        data-url="{{ p.linkedin_url or 'https://www.linkedin.com/search/results/people/?keywords=' ~ (p.nimi ~ ' ' ~ j.company)|urlencode }}">
+        LinkedIn{{ '' if p.linkedin_url else ' (haku)' }}</button>
+      <button class="btn ghost" onclick="sent(this, 'Sähköposti')">Merkitse: sähköposti lähetetty</button>
+      <button class="btn ghost" onclick="sent(this, 'LinkedIn')">Merkitse: LinkedIn lähetetty</button>
+    </div>
+  </div>
+  {% else %}<p class="muted">Päättäjiä ei löytynyt.</p>{% endfor %}
+  <form method="post" action="{{ url_for('outreach_start', job_id=j.id) }}" style="margin-top:10px"><button class="btn ghost">Etsi uudelleen</button></form>
+  {% else %}
+  <p class="muted">Claude etsii verkosta toimitusjohtajan, roolin johtajan ja ilmoituksen yhteyshenkilön sekä kirjoittaa heille sähköposti- ja LinkedIn-viestit. Sinä lähetät.</p>
+  <form method="post" action="{{ url_for('outreach_start', job_id=j.id) }}"><button class="btn">Etsi johto</button></form>
+  {% endif %}
+</div>
+<script>
+const row = b => b.closest('.task');
+const val = (b, cls) => row(b).querySelector('.' + cls)?.value || '';
+// Gmailin kirjoitusikkuna tallentuu automaattisesti Luonnoksiin
+function gmail(b) {
+  window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(b.dataset.to)
+    + '&su=' + encodeURIComponent(val(b, 'subj')) + '&body=' + encodeURIComponent(val(b, 'body')), '_blank');
+}
+async function linkedin(b) {
+  try { await navigator.clipboard.writeText(val(b, 'li')); b.textContent = 'Viesti kopioitu ✓'; } catch (e) {}
+  window.open(b.dataset.url, '_blank');
+}
+async function sent(b, kanava) {
+  await fetch("{{ url_for('outreach_sent', job_id=j.id, i=0) }}".replace('/0/', '/' + row(b).dataset.i + '/'),
+    {method: 'POST', headers: {'Content-Type': 'application/json'},
+     body: JSON.stringify({kanava, otsikko: kanava === 'LinkedIn' ? '' : val(b, 'subj'),
+                           teksti: kanava === 'LinkedIn' ? val(b, 'li') : val(b, 'body')})});
+  location.reload();
+}
+document.querySelectorAll('#johto .li').forEach(t => {
+  const c = () => t.closest('.task').querySelector('.licount').textContent = t.value.length;
+  t.oninput = c; c();
+});
+</script>
+{% endif %}
 
 <div class="card"><h2>Ilmoitusteksti</h2><pre>{{ j.description }}</pre></div>"""
 
@@ -280,7 +419,12 @@ def job(job_id):
     j = db.get(db.connect(), job_id) or abort(404)
     busy = _fill_alive()
     fill = busy and _fill.tab(job_id) is not None
-    return page(JOB, only=job_id, j=j, a=j["analysis"], app=j["application"], fill=fill, busy=busy)
+    run = _outreach.get(job_id)
+    outreach_error = f"Johdon haku epäonnistui: {run.error}" if run and run.state == "virhe" else None
+    show = j["status"] in ("lahetetty", "vastasi") or bool(j["outreach"]) or _outreach_running(job_id)
+    return page(JOB, only=job_id, j=j, a=j["analysis"], app=j["application"], fill=fill, busy=busy,
+                o=j["outreach"], show_outreach=show, outreach_running=_outreach_running(job_id),
+                outreach_error=outreach_error)
 
 
 @app.post("/job/<int:job_id>/kirjoita")
@@ -297,6 +441,58 @@ def save(job_id):
     db.update(conn, job_id, application=application)
     pipeline.rebuild_pdf(job_id, load_config())
     return redirect(url_for("job", job_id=job_id, msg="Tallennettu."))
+
+
+# --- Yhteydenotto johtoon ------------------------------------------------------
+
+class OutreachRun(threading.Thread):
+    """Päättäjien haku ja viestien kirjoitus taustalla (noin 1–2 min)."""
+
+    def __init__(self, job_id: int):
+        super().__init__(daemon=True)
+        self.job_id = job_id
+        self.state = "kaynnissa"
+        self.error = ""
+
+    def run(self):
+        try:
+            pipeline.outreach(self.job_id, load_config())
+            self.state = "valmis"
+        except Exception as e:
+            self.error = f"{e.__class__.__name__}: {str(e)[:200]}"
+            self.state = "virhe"
+
+
+_outreach: dict[int, OutreachRun] = {}
+
+
+def _outreach_running(job_id: int) -> bool:
+    run = _outreach.get(job_id)
+    return bool(run and run.state == "kaynnissa")
+
+
+@app.post("/job/<int:job_id>/johto")
+def outreach_start(job_id):
+    if not _outreach_running(job_id):
+        _outreach[job_id] = OutreachRun(job_id)
+        _outreach[job_id].start()
+    return redirect(url_for("job", job_id=job_id) + "#johto")
+
+
+@app.get("/job/<int:job_id>/johto/tila")
+def outreach_status(job_id):
+    run = _outreach.get(job_id)
+    return jsonify(state=run.state if run else "valmis", error=run.error if run else "")
+
+
+@app.post("/job/<int:job_id>/johto/<int:i>/lahetetty")
+def outreach_sent(job_id, i):
+    conn = db.connect()
+    j = db.get(conn, job_id) or abort(404)
+    data = j["outreach"]
+    data["henkilot"][i]["lahetetty"].append({**request.get_json(), "aika": db.now()})
+    db.update(conn, job_id, outreach=data)
+    return ("", 204)
 
 
 @app.get("/job/<int:job_id>/pdf")

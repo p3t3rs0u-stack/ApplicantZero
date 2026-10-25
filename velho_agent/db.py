@@ -16,6 +16,8 @@ STATUSES = {
     "hylatty": "Hylätty",
 }
 
+JSON_FIELDS = ("analysis", "application", "outreach")
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,6 +52,8 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    if "outreach" not in [r[1] for r in conn.execute("PRAGMA table_info(jobs)")]:
+        conn.execute("ALTER TABLE jobs ADD COLUMN outreach TEXT")  # johdon yhteydenotot (JSON)
     return conn
 
 
@@ -72,7 +76,7 @@ def insert_job(conn, job: dict) -> bool:
 
 
 def update(conn, job_id: int, **fields) -> None:
-    for key in ("analysis", "application"):
+    for key in JSON_FIELDS:
         if key in fields and not isinstance(fields[key], (str, type(None))):
             fields[key] = json.dumps(fields[key], ensure_ascii=False)
     fields["updated_at"] = now()
@@ -98,6 +102,6 @@ def list_jobs(conn, status: str | None = None) -> list[dict]:
 
 def _to_dict(row) -> dict:
     d = dict(row)
-    for key in ("analysis", "application"):
+    for key in JSON_FIELDS:
         d[key] = json.loads(d[key]) if d.get(key) else None
     return d

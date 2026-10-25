@@ -5,6 +5,7 @@ import os
 from typing import Literal
 
 import anthropic
+import httpx
 from pydantic import BaseModel
 
 from . import config  # noqa: F401 – lataa .env ennen avainten lukua
@@ -235,6 +236,127 @@ Yritys: Velho ({cfg['velho']['verkkosivu']})
         t["arvo"] = t["arvo"].replace("{SAATE}", application["saate"])
     return plan
 
+
+
+# --- 4. Yhteydenotto johtoon ------------------------------------------------
+
+WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search"}
+
+
+class Paattaja(BaseModel):
+    nimi: str
+    rooli: str
+    peruste: str          # miksi juuri hän (esim. "toimitusjohtaja", "rekrytoivan tiimin esihenkilö")
+    lahde: str            # URL, josta nimi ja rooli löytyivät
+    linkedin_url: str     # tyhjä, jos profiilia ei löytynyt
+    sahkoposti: str       # vain julkisesti löytynyt osoite, muuten tyhjä
+    sahkoposti_lahde: str
+    prioriteetti: int     # 1 = paras vastaanottaja
+
+
+class Johto(BaseModel):
+    henkilot: list[Paattaja]
+
+
+FIND_SYSTEM = """Etsit verkosta yrityksen päättäjät, joille Velho (tekoäly- ja automaatioyritys)
+lähettää myyntiviestin työpaikkailmoituksen pohjalta. Etsi:
+1. yrityksen toimitusjohtaja,
+2. johtaja, jonka vastuulle ilmoituksen rooli kuuluu (esim. talousjohtaja, HR-johtaja, palvelujohtaja),
+3. ilmoituksessa mainittu yhteyshenkilö, jos sellainen on.
+Käytä lähteinä yrityksen omia sivuja, kaupparekisteriä, tiedotteita ja LinkedIniä. Varmista, että
+tieto on ajantasainen ja koskee oikeaa yritystä (sama nimi voi olla monella yrityksellä).
+Etsi jokaiselle LinkedIn-profiilin URL. Sähköpostiosoitteen saa ilmoittaa VAIN, jos se löytyy
+julkisesta lähteestä sellaisenaan (esim. yrityksen yhteystietosivu tai ilmoitus) – älä koskaan
+päättele osoitetta nimestä tai osoitemallista. Kerro jokaisesta nimi, rooli, miksi hän, lähde-URL,
+LinkedIn-URL ja sähköposti lähteineen. Lähteet aina täydellisinä URL-osoitteina (https://…).
+Järjestä lopuksi henkilöt paremmuusjärjestykseen: paras on se, joka todennäköisimmin päättää
+automaatiohankinnasta tämän roolin tehtäviin (pienessä yrityksessä yleensä toimitusjohtaja,
+isossa yrityksessä roolin johtaja, esim. talousjohtaja). Rekrytoija ei yleensä ole paras."""
+
+
+def find_decision_makers(job: dict) -> list[dict]:
+    messages = [{"role": "user", "content": _job_block(job)}]
+    for _ in range(4):  # pause_turn: pitkä haku jatkuu samasta kohdasta
+        response = client().messages.create(model=FILL_MODEL, max_tokens=8000, system=FIND_SYSTEM,
+                                            tools=[WEB_SEARCH], messages=messages)
+        messages.append({"role": "assistant", "content": response.content})
+        if response.stop_reason != "pause_turn":
+            break
+    found = "\n".join(b.text for b in response.content if b.type == "text")
+    result: Johto = _parse(Johto, "Muunna hakutulos listaksi henkilöitä. Jätä tyhjäksi kentät, joita "
+                           "tekstissä ei ole. Älä keksi sähköposteja tai URL-osoitteita. Lähdekentät ovat "
+                           "URL-osoitteita (useampi puolipisteellä eroteltuna). prioriteetti = tekstin "
+                           "paremmuusjärjestys (1 = paras, ei samoja numeroita).", found,
+                           effort="low", model=FILL_MODEL)
+    people = sorted(result.model_dump()["henkilot"], key=lambda p: p["prioriteetti"])
+    for person in people:  # osoite vain, jos se todella lukee lähdesivulla (ei arvauksia)
+        sources = f'{person["sahkoposti_lahde"]};{person["lahde"]}'
+        if person["sahkoposti"] and not _appears_on(person["sahkoposti"], sources):
+            person["sahkoposti"] = person["sahkoposti_lahde"] = ""
+    return people
+
+
+def _appears_on(email: str, sources: str) -> bool:
+    for url in sources.replace(",", ";").split(";"):
+        url = url.strip()
+        if not url.startswith("http"):
+            continue
+        try:
+            page = httpx.get(url, follow_redirects=True, timeout=20, headers={"User-Agent": "Mozilla/5.0"}).text
+        except Exception:
+            continue
+        if email.lower() in page.lower():
+            return True
+    return False
+
+
+class Johtoviesti(BaseModel):
+    nimi: str
+    sposti_otsikko: str
+    sposti_teksti: str
+    linkedin_viesti: str
+
+
+class Johtoviestit(BaseModel):
+    viestit: list[Johtoviesti]
+
+
+OUTREACH_SYSTEM = """Kirjoitat Velhon puolesta lyhyen henkilökohtaisen viestin yrityksen päättäjälle.
+Taustaa: Velho haki yrityksen avointa paikkaa poikkeavalla hakemuksella – ehdotti, että osa roolin
+rutiinitehtävistä automatisoidaan tekoälyagenteilla. Nyt viesti menee suoraan päättäjälle.
+
+Jokaiselle henkilölle (suomeksi, "te"-muoto, ei markdownia):
+- sposti_otsikko: lyhyt ja kiinnostava, ei klikkiotsikko.
+- sposti_teksti: 80–130 sanaa. Viittaa avoimeen paikkaan ja siihen, että lähetimme hakemuksen
+  "vähän eri tavalla". Yksi konkreettinen esimerkki roolin rutiinista, jonka agentti hoitaisi,
+  ja arvioitu säästö (sano arvioksi). Sovita sisältö vastaanottajan rooliin (toimitusjohtajalle
+  kokonaishyöty, talousjohtajalle luvut, HR:lle työntekijän aika). Ehdota 30 min puhelua linkillä.
+  Loppuun allekirjoitus ja lause: jos aihe ei kiinnosta, kertokaa niin emme ole enää yhteydessä.
+- linkedin_viesti: enintään 280 merkkiä, toimii myös kontaktipyynnön saatteena. Sama ajatus tiiviisti."""
+
+
+def write_outreach(job: dict, analysis: dict, people: list[dict], cfg: dict) -> list[dict]:
+    velho = cfg["velho"]
+    hakija = cfg.get("hakija") or {}
+    saasto = f"{round(analysis['vuosisaasto_eur'], -3):,}".replace(",", " ")
+    user = f"""{_job_block(job)}
+
+<arvio>
+Automatisoitavissa noin {analysis['automatisoitava_osuus_pct']} %, säästö noin {saasto} €/v.
+Tehtävät: {json.dumps([t['tehtava'] for t in analysis['tehtavat']], ensure_ascii=False)}
+</arvio>
+
+<vastaanottajat>
+{json.dumps([{k: p[k] for k in ('nimi', 'rooli', 'peruste')} for p in people], ensure_ascii=False, indent=1)}
+</vastaanottajat>
+
+<velho>
+Varaa esittelypuhelu: {velho['varaa_aika']}
+Allekirjoitus: {hakija.get('etunimi', '')} {hakija.get('sukunimi', '')}, {hakija.get('titteli', '')}, Velho
+{hakija.get('sahkoposti', '')} {hakija.get('puhelin', '')} {velho['verkkosivu']}
+</velho>"""
+    result: Johtoviestit = _parse(Johtoviestit, OUTREACH_SYSTEM, user, effort="medium")
+    return result.model_dump()["viestit"]
 
 def _job_block(job: dict) -> str:
     return f"""<ilmoitus>
