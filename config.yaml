@@ -1,0 +1,90 @@
+# Velho-agentin asetukset
+
+# Hakusanat, joilla etsitään rutiinitöitä sisältäviä ilmoituksia
+hakusanat:
+  - toimistoavustaja
+  - toimistosihteeri
+  - laskutus
+  - reskontra
+  - kirjanpitäjä
+  - palkanlaskija
+  - tilausten käsittely
+  - asiakaspalvelu
+  - myyntisihteeri
+  - assistentti
+  - tiedon syöttö
+  - back office
+  - hankinta-assistentti
+  - logistiikka-assistentti
+
+# Duunitorin haku. Haku tehdään hitaasti eikä estoja kierretä:
+# jos Duunitori vastaa 403/429, haku pysähtyy.
+duunitori:
+  sivuja_per_haku: 2      # 20 ilmoitusta / sivu
+  viive_s: 10             # odotus jokaisen pyynnön välissä
+  max_uusia_per_ajo: 100  # yläraja uusille ilmoituksille yhdellä ajolla
+
+# Ilmoitukset, joiden automatisoitavuus on tätä pienempi, jätetään pois
+min_pisteet: 55
+
+# Velhon kuvaus, jota agentti käyttää hakemuksissa
+velho:
+  nimi: Velho
+  verkkosivu: https://velho.io
+  varaa_aika: https://ops.velho.io/book/patrik/intro
+  kuvaus: >
+    Velho on automaatio- ja käytännön tekoälykumppani. Nimetty Velho-asiantuntija
+    työskentelee asiakkaan tiimin kanssa joka kuukausi: löydämme käsityön, joka
+    hidastaa, rakennamme korjauksen ja autamme ihmisiä ottamaan sen käyttöön.
+    Toimintatapa: 1) Löydä – haastatellaan tekijöitä ja jäljitetään todellinen prosessi,
+    2) Priorisoi – liiketoiminta-arvo, vaiva ja nopeus, 3) Toimita – pienin hyödyllinen
+    versio nopeasti oikeaan työhön (automaatio, sisäinen työkalu tai asiantuntijamuutos),
+    4) Ota käyttöön – rutiinit muuttuvat ja tuloksia seurataan.
+    Perustajat Oskar Kallio ja Patrik Holopainen, tiimillä yli 100 toimitettua projektia,
+    ja perustajien rakentamilla tuotteilla on yli 50 000 käyttäjää.
+    Tyypillisiä nopeita parannuksia: käsin tehtävien siirtojen poisto, tarkistusten
+    esitäyttö, järjestelmien yhdistäminen, seurantaviestien luonnostelu, pyyntöjen
+    reititys, raportit ja dashboardit, tarjousprosessin yksinkertaistus.
+  # Toimintatapa velho.io-sivuilta, näytetään PDF-liitteessä tässä järjestyksessä
+  toimintatapa:
+    - vaihe: Kartoitus
+      kuvaus: Keskustelemme työn tekijöiden kanssa ja selvitämme, miten prosessi todella kulkee eri roolien ja järjestelmien välillä. Tuloksena on selkeä lista pullonkauloista ja mahdollisuuksista.
+    - vaihe: Priorisointi
+      kuvaus: Laitamme mahdollisuudet järjestykseen liiketoiminta-arvon, vaivan ja hyödyn nopeuden mukaan. Päätämme yhdessä, mitä ratkaistaan nyt ja mikä voi odottaa.
+    - vaihe: Toteutus
+      kuvaus: Rakennamme pienimmän hyödyllisen version ja viemme sen nopeasti oikeaan työhön – automaationa, sisäisenä työkaluna tai asiantuntijan johtamana muutoksena.
+    - vaihe: Käyttöönotto
+      kuvaus: Autamme tiimiä muuttamaan rutiinit uuden ratkaisun ympärille ja seuraamme, mikä paranee ja mikä vielä hidastaa. Opit ovat seuraavan kierroksen lähtökohta.
+
+# Hakija = henkilö, jonka nimissä hakemus täytetään. TÄYTÄ ENNEN KÄYTTÖÄ.
+hakija:
+  etunimi: "Patrik"
+  sukunimi: "Holopainen"
+  sahkoposti: "hello@velho.io"
+  puhelin: "+358 44 1234567"
+  titteli: "Toimitusjohtaja"
+  linkedin: https://www.linkedin.com/company/velho/home/
+  kaupunki: Helsinki
+  maa: Suomi
+  postinumero: "00220"
+  katuosoite: "Velhokatu 10"
+
+# Vastaukset hakulomakkeiden kysymyksiin. Claude soveltaa näitä kenttiin;
+# valintalistoista valitaan lähin vaihtoehto. Velho on tekoäly, joten vastaukset ovat sen mukaisia.
+lomakevastaukset:
+  postitoimipaikka: Helsinki
+  palkkatoive: "0 € – Velho toimii palveluna, hinta sovitaan erikseen"
+  aloitus: Heti
+  kielitaito: Erinomainen / äidinkielinen kaikissa kielissä (tekoäly osaa kaikki kielet)
+  koulutus: Tekoäly – osaaminen kaikilta aloilta
+  tyokokemus: Valitse suurin vaihtoehto
+  osaaminen: Valitse korkein taso kaikissa taidoissa ja ohjelmistoissa
+  sukupuoli: En halua kertoa / muu
+  ajokortti: Ei
+  kansalaisuus: Suomi
+  tyolupa: Kyllä / ei tarvita
+  syntymaaika: Jätä tyhjäksi
+  mista_kuulit: Duunitori
+  matkustus_ja_tyoaika: Kyllä kaikkeen (etätyö, vuorotyö, matkustus, osa- ja kokoaikatyö)
+  ehdot: Hyväksy kaikki käyttöehdot, tietosuojaselosteet, suostumukset ja palautteen lähettäminen
+  kortit_ja_luvat: Jätä rastittamatta (Velholla ei ole virallisia kortteja, passeja tai lupia, esim. hygieniapassi, työturvallisuuskortti)

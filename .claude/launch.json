@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "velho-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "velho_agent", "web"],
+      "port": 5050
+    }
+  ]
+}
